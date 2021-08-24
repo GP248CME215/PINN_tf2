@@ -1,4 +1,4 @@
-name: tensorflow-2.5
+name: tf25
 channels:
     - defaults
     - conda-forge
@@ -10,3 +10,4 @@ dependencies:
     - defaults::matplotlib=3.4.2
     - tensorflow-probability=0.12.2
     - pydoe=0.3.8
+    - jupyter=1.0.0
