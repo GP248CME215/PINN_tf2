@@ -104,112 +104,27 @@ class PhysicsInformedNN:
         return loss
 
 
+    def train(self, nIter: int, learning_rate: float):
+        """Function used for training the model"""
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+
+        varlist = self.weights + self.biases # all trainable parameters
+        start_time = time.time()
+
+        for it in range(nIter):
+            optimizer.minimize(self.loss_NN, varlist)
+
+            # Print
+            if it % 100 == 0:
+                elapsed = time.time() - start_time
+                loss = self.loss_NN().numpy()
+                print('It: %d, Train Loss: %.3e, Time: %.2f' % (it, loss, elapsed))
+                start_time = time.time()
+
     '''
     Functions used to define L-BFGS optimizers
     ===============================================================
     '''
-
-    # A factory to create a function required by tfp.optimizer.lbfgs_minimize.
-    def Lbfgs_function(self):
-        # obtain the shapes of all trainable parameters in the model
-        varlist = self.train_variables
-        shapes = tf.shape_n(varlist)
-        n_tensors = len(shapes)
-
-        # we'll use tf.dynamic_stitch and tf.dynamic_partition later, so we need to
-        # prepare required information first
-        count = 0
-        idx = [] # stitch indices
-        part = [] # partition indices
-
-        self.start_time = time.time()
-
-        for i, shape in enumerate(shapes):
-            n = np.product(shape)
-            idx.append(tf.reshape(tf.range(count, count+n, dtype=tf.int32), shape))
-            part.extend([i]*n)
-            count += n
-
-        part = tf.constant(part)
-
-        def assign_new_model_parameters(params_1d):
-            # A function updating the model's parameters with a 1D tf.Tensor.
-            # Sub-function under function of class not need to input self
-
-            params = tf.dynamic_partition(params_1d, part, n_tensors)
-            for i, (shape, param) in enumerate(zip(shapes, params)):
-                self.train_variables[i].assign(tf.reshape(param, shape))
-
-
-        @tf.function
-        def f(params_1d):
-            # A function that can be used by tfp.optimizer.lbfgs_minimize.
-            # This function is created by function_factory.
-            # Sub-function under function of class not need to input self
-
-            # use GradientTape so that we can calculate the gradient of loss w.r.t. parameters
-            with tf.GradientTape() as tape:
-                # update the parameters in the model
-                # this step is critical for self-defined function for L-BFGS
-                assign_new_model_parameters(params_1d)
-                # calculate the loss
-                loss_value = self.loss_NN()
-
-            # calculate gradients and convert to 1D tf.Tensor
-            grads = tape.gradient(loss_value, varlist)
-            grads = tf.dynamic_stitch(idx, grads)
-
-            # store loss value so we can retrieve later
-            tf.py_function(f.history.append, inp=[loss_value], Tout=[])
-
-            # print out iteration & loss
-            f.iter.assign_add(1)
-
-            if f.iter % 10 == 0:
-                tf.print("Iter:", f.iter, "loss:", loss_value)
-
-            return loss_value, grads
-
-        # store these information as members so we can use them outside the scope
-        f.iter = tf.Variable(0)
-        f.idx = idx
-        f.part = part
-        f.shapes = shapes
-        f.assign_new_model_parameters = assign_new_model_parameters
-        f.history = []
-
-        return f
-
-
-    # define the function to apply the L-BFGS optimizer
-    def Lbfgs_optimizer(self, nIter):
-
-        func = self.Lbfgs_function()
-
-        # convert initial model parameters to a 1D tf.Tensor
-        init_params = tf.dynamic_stitch(func.idx, self.train_variables)
-
-        max_nIter = tf.cast(nIter/3, dtype = tf.int32)
-
-        # train the model with L-BFGS solver
-        results = tfp.optimizer.lbfgs_minimize(
-            value_and_gradients_function=func, initial_position=init_params, max_iterations=max_nIter)
-
-        # after training, the final optimized parameters are still in results.position
-        # so we have to manually put them back to the model
-        func.assign_new_model_parameters(results.position)
-
-
-    '''
-    Function used for training the model
-    ===============================================================
-    '''
-
-    def train(self, nIter):
-        # running the Lbfgs optimization
-        self.Lbfgs_optimizer(nIter)
-
-
     @tf.function
     def predict(self, X_star):
         u_star = self.net_u(X_star[:,0:1], X_star[:,1:2])

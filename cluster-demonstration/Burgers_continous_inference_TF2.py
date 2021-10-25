@@ -61,7 +61,7 @@ if __name__ == "__main__":
     model = PhysicsInformedNN(X_u_train, u_train, X_f_train, layers, lb, ub, nu)
 
     start_time = time.time()
-    model.train(5000)
+    model.train(5000, learning_rate=1e-3)
     elapsed = time.time() - start_time
     print("Training time: %.4f" % (elapsed))
 
